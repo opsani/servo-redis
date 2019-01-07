@@ -77,6 +77,16 @@ class RedisDriver(Adjust):
                 'redis': {
                     'settings': {
                         'maxmemory': self._maxmemory_setting(),
+                        'maxmemory-policy': {
+                            'type': 'enum',
+                            'value': 2,
+                            'values': [
+                                'allkeys-lru',
+                                'allkeys-lfu',
+                                'allkeys-random',
+                            ],
+                            'unit': 'setting',
+                        }
                     },
                 },
             },
