@@ -1,0 +1,88 @@
+#!/usr/bin/env python3
+import os
+
+import yaml
+from redis import Redis as RedisClient
+from adjust import Adjust
+
+DESC = "Redis adjust driver for Opsani Optune"
+VERSION = "0.0.1"
+HAS_CANCEL = False
+
+REDIS_CREDS_FPATH = '/etc/optune/redis-driver-config.yaml'
+
+
+class RedisDriver(Adjust):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.client = self._init_redis_client()
+
+    @staticmethod
+    def _init_redis_client():
+        k8s_secret_fpath = os.environ.get('OPTUNE_REDIS_K8S_SECRET_FPATH', None)
+        kwargs = {}
+        if k8s_secret_fpath:
+            with open(k8s_secret_fpath, 'r') as sf:
+                secret = yaml.load(sf)
+                kwargs.update(secret)
+        else:
+            prefix = 'optune_redis_'
+            kwargs.update(**{k.lower()[len(prefix):]: v
+                             for k, v in os.environ.items()
+                             if k.lower().startswith(prefix)})
+        return RedisClient(**kwargs)
+
+    def adjust(self, data=None):
+        settings = data['application']['components']['redis']['settings']
+
+        self.progress = 0
+        self.progress_message = "adjusting"
+        self.print_progress()
+
+        for setting_name, setting_object in settings.items():
+            value = setting_object['value']
+
+            if setting_name == 'maxmemory':
+                value = int(setting_object['value']) * 1024 * 1024  # megabytes to bytes
+
+            # If setting is not supported, `redis.exceptions.ResponseError: Unsupported CONFIG parameter:`
+            # will be raised.
+            self.client.config_set(setting_name, value)
+
+        self.progress = 100
+        self.progress_message = "adjusted"
+        self.print_progress()
+
+    def _maxmemory_setting(self):
+        from psutil import virtual_memory
+        mem = virtual_memory()
+        avl_mbytes = int(mem.available / 1024 / 1024)  # Availabile memory in mbytes.
+        cur_maxmemory_in_bytes = int(self.client.config_get('maxmemory')['maxmemory'])
+        assert cur_maxmemory_in_bytes > 0, 'Maxmemory is unbounded. Set to something sane (in bytes).'
+        cur_maxmemory_in_mbytes = cur_maxmemory_in_bytes / 1024 / 1024  # Current maxmemory setting in mbytes.
+        cur_used_memory_in_bytes = int(self.client.info('memory')['used_memory'])
+        cur_used_memory_in_mbytes = cur_used_memory_in_bytes / 1024 / 1024
+        return {
+            'value': cur_maxmemory_in_mbytes,
+            'unit': 'megabyte',
+            'type': 'range',
+            'step': 128,
+            'min': 128,
+            'max': cur_used_memory_in_mbytes + avl_mbytes,
+        }
+
+    def query(self):
+        return {
+            'components': {
+                'redis': {
+                    'settings': {
+                        'maxmemory': self._maxmemory_setting(),
+                    },
+                },
+            },
+        }
+
+
+if __name__ == '__main__':
+    driver = RedisDriver(cli_desc=DESC, supports_cancel=HAS_CANCEL, version=VERSION)
+    driver.run()
