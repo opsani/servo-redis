@@ -9,84 +9,94 @@ DESC = "Redis adjust driver for Opsani Optune"
 VERSION = "0.0.1"
 HAS_CANCEL = False
 
-REDIS_CREDS_FPATH = '/etc/optune/redis-driver-config.yaml'
+config_path = os.environ.get('OPTUNE_CONFIG_PATH', './config.yaml')
+assert config_path, 'Please, provide `config.yaml` file path using environment variable OPTUNE_CONFIG_PATH.\n' \
+                    'Its current value is "{}". You can refer to an example file config.yaml.example. ' \
+                    'It can be found in the repo of this driver.'.format(config_path)
+
+with open(config_path, 'r') as c:
+    try:
+        config = yaml.load(c)
+    except FileNotFoundError as e:
+        print('Could not find config.yaml at "{}"'.format(config_path))
+        exit(1)
+    except yaml.YAMLError as e:
+        print('Could not parse config.yaml file located at "{}"'.format(config_path))
+        raise
+
+    assert config, 'No configuration was provided in the `config.yaml` file. ' \
+                   'Please, make sure "{}" has all the required keys ' \
+                   'as per specification; you can find in `README.md`.'.format(config_path)
+
+try:
+    redis_config = config.get('redis')
+    redis_config_settings = redis_config.get('settings')
+    redis_config_connection = redis_config.setdefault('connection', {})
+except KeyError as e:
+    raise Exception('Please, refer to config.yaml.example to define all the required configuration.\n'
+                    'Original error: {}'.format(str(e)))
 
 
 class RedisDriver(Adjust):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.client = self._init_redis_client()
-
-    @staticmethod
-    def _init_redis_client():
-        k8s_secret_fpath = os.environ.get('OPTUNE_REDIS_K8S_SECRET_FPATH', None)
-        kwargs = {}
-        if k8s_secret_fpath:
-            with open(k8s_secret_fpath, 'r') as sf:
-                secret = yaml.load(sf)
-                kwargs.update(secret)
-        else:
-            prefix = 'optune_redis_'
-            kwargs.update(**{k.lower()[len(prefix):]: v
-                             for k, v in os.environ.items()
-                             if k.lower().startswith(prefix)})
-        return RedisClient(**kwargs)
+        rkwargs = {}
+        if redis_config_connection:
+            # Get connection settings from config.yaml
+            rkwargs.update({
+                'host': redis_config_connection.get('host', 'localhost'),
+                'port': redis_config_connection.get('port', 6379),
+                'db': redis_config_connection.get('db', 0),
+                'password': redis_config_connection.get('password', ''),
+            })
+        # Get connection settings from prefixed environment variables
+        rkwargs.update({
+            'host': os.environ.get('OPTUNE_REDIS_HOST', 'localhost'),
+            'port': os.environ.get('OPTUNE_REDIS_PORT', 6379),
+            'db': os.environ.get('OPTUNE_REDIS_DB', 0),
+            'password': os.environ.get('OPTUNE_REDIS_PASSWORD', ''),
+        })
+        self.client = RedisClient(**rkwargs)
 
     def adjust(self, data=None):
         settings = data['application']['components']['redis']['settings']
 
         self.progress = 0
-        self.progress_message = "adjusting"
+        self.progress_message = "adjusting {} setting/s".format(len(settings))
         self.print_progress()
 
-        for setting_name, setting_object in settings.items():
-            value = setting_object['value']
+        for name, setting in settings.items():
+            value = setting['value']
 
-            if setting_name == 'maxmemory':
-                value = int(setting_object['value']) * 1024 * 1024  # megabytes to bytes
+            if name == 'maxmemory':
+                value = '{}mb'.format(int(value))
 
             # If setting is not supported, `redis.exceptions.ResponseError: Unsupported CONFIG parameter:`
             # will be raised.
-            self.client.config_set(setting_name, value)
+            self.client.config_set(name, str(value))
 
         self.progress = 100
-        self.progress_message = "adjusted"
+        self.progress_message = "adjusted {} setting/s".format(len(settings))
         self.print_progress()
-
-    def _maxmemory_setting(self):
-        from psutil import virtual_memory
-        mem = virtual_memory()
-        avl_mbytes = int(mem.available / 1024 / 1024)  # Availabile memory in mbytes.
-        cur_maxmemory_in_bytes = int(self.client.config_get('maxmemory')['maxmemory'])
-        assert cur_maxmemory_in_bytes > 0, 'Maxmemory is unbounded. Set to something sane (in bytes).'
-        cur_maxmemory_in_mbytes = cur_maxmemory_in_bytes / 1024 / 1024  # Current maxmemory setting in mbytes.
-        cur_used_memory_in_bytes = int(self.client.info('memory')['used_memory'])
-        cur_used_memory_in_mbytes = cur_used_memory_in_bytes / 1024 / 1024
-        return {
-            'value': cur_maxmemory_in_mbytes,
-            'unit': 'megabyte',
-            'type': 'range',
-            'step': 128,
-            'min': 128,
-            'max': cur_used_memory_in_mbytes + avl_mbytes,
-        }
 
     def query(self):
         return {
             'components': {
                 'redis': {
                     'settings': {
-                        'maxmemory': self._maxmemory_setting(),
+                        'maxmemory': {
+                            'type': 'range',
+                            'value': int(int(self.client.config_get('maxmemory')['maxmemory']) / 1024 / 1024),
+                            'min': redis_config_settings.get('maxmemory').get('min'),
+                            'max': redis_config_settings.get('maxmemory').get('max'),
+                            'step': redis_config_settings.get('maxmemory').get('step'),
+                            'unit': 'megabytes',
+                        },
                         'maxmemory-policy': {
                             'type': 'enum',
-                            'value': 2,
-                            'values': [
-                                'allkeys-lru',
-                                'allkeys-lfu',
-                                'allkeys-random',
-                            ],
-                            'unit': 'setting',
-                        }
+                            'values': redis_config_settings.get('maxmemory-policy').get('values'),
+                            'value': self.client.config_get('maxmemory-policy')['maxmemory-policy'],
+                        },
                     },
                 },
             },
