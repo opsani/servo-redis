@@ -40,22 +40,20 @@ except KeyError as e:
 class RedisDriver(Adjust):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        rkwargs = {}
-        if redis_config_connection:
-            # Get connection settings from config.yaml
-            rkwargs.update({
-                'host': redis_config_connection.get('host', 'localhost'),
-                'port': redis_config_connection.get('port', 6379),
-                'db': redis_config_connection.get('db', 0),
-                'password': redis_config_connection.get('password', ''),
-            })
-        # Get connection settings from prefixed environment variables
-        rkwargs.update({
-            'host': os.environ.get('OPTUNE_REDIS_HOST', 'localhost'),
-            'port': os.environ.get('OPTUNE_REDIS_PORT', 6379),
-            'db': os.environ.get('OPTUNE_REDIS_DB', 0),
-            'password': os.environ.get('OPTUNE_REDIS_PASSWORD', ''),
-        })
+        rkwargs = {
+            'host': str(
+                os.environ.get('OPTUNE_REDIS_HOST', redis_config_connection.get('host', 'localhost'))
+            ),
+            'port': int(
+                os.environ.get('OPTUNE_REDIS_PORT', redis_config_connection.get('port', 6379))
+            ),
+            'db': int(
+                os.environ.get('OPTUNE_REDIS_DB', redis_config_connection.get('db', 0))
+            ),
+            'password': str(
+                os.environ.get('OPTUNE_REDIS_PASSWORD', redis_config_connection.get('password', ''))
+            ),
+        }
         self.client = RedisClient(**rkwargs)
 
     def adjust(self, data=None):
