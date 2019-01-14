@@ -9,7 +9,7 @@ DESC = "Redis adjust driver for Opsani Optune"
 VERSION = "0.0.1"
 HAS_CANCEL = False
 
-config_path = os.environ.get('OPTUNE_CONFIG_PATH', './config.yaml')
+config_path = os.environ.get('OPTUNE_CONFIG_PATH', '/servo/config.yaml')
 assert config_path, 'Please, provide `config.yaml` file path using environment variable OPTUNE_CONFIG_PATH.\n' \
                     'Its current value is "{}". You can refer to an example file config.yaml.example. ' \
                     'It can be found in the repo of this driver.'.format(config_path)
