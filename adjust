@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import collections
 import os
 
 import yaml
@@ -6,36 +7,64 @@ from redis import Redis as RedisClient
 from adjust import Adjust
 
 DESC = "Redis adjust driver for Opsani Optune"
-VERSION = "0.0.2"
+VERSION = "0.0.3"
 HAS_CANCEL = False
 
-config_path = os.environ.get('OPTUNE_CONFIG_PATH', './config.yaml')
-secret_path = os.environ.get('OPTUNE_SECRET_CONFIG', './secret.yaml')
+config_path = os.environ.get('OPTUNE_CONFIG', './config.yaml')
+secret_path = os.environ.get('OPTUNE_SECRET', './secret.yaml')
+
+
+def dict_merge(d, m):
+    for k, v in m.items():
+        if k in d and isinstance(d[k], dict) and isinstance(m[k], collections.Mapping):
+            dict_merge(d[k], m[k])
+        else:
+            d[k] = m[k]
 
 
 class RedisDriver(Adjust):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self.config = self.load_config()
+        self.check_config()
+        self.client = RedisClient(
+            host=self.config.get('redis').get('host', '127.0.0.1'),
+            port=self.config.get('redis').get('port', 6379),
+            db=self.config.get('redis').get('db', 0),
+            password=self.config.get('redis').get('password', ''),
+        )
+
+    def check_config(self):
+        c = self.config
+        assert c and c.get('redis', None), 'Configuration was not provided in "{}". ' \
+                                           'Please refer to README.md'.format(config_path)
+        r = c.get('redis')
+        import json
+        raise Exception(json.dumps(c, indent=2))
+        assert r.get('settings', None), 'Section "settings" was not provided in "{}". ' \
+                                        'Please refer to README.md.'.format(config_path)
+        assert r['settings'].get('maxmemory', None), 'Section "settings.maxmemory" was not provided ' \
+                                                     'in "{}". Please refer to README.md.'.format(config_path)
+        assert r['settings']['maxmemory'].get('min', None), 'Setting "settings.maxmemory.min" was not provided ' \
+                                                            'in "{}". Please refer to README.md.'.format(config_path)
+        assert r['settings']['maxmemory'].get('max', None), 'Setting "settings.maxmemory.max" was not provided ' \
+                                                            'in "{}". Please refer to README.md.'.format(config_path)
+        assert r['settings']['maxmemory'].get('step', None), 'Setting "settings.maxmemory.step" was not provided ' \
+                                                             'in "{}". Please refer to README.md.'.format(config_path)
+        assert r['settings'].get('maxmemory-policy', None), 'Section "settings.maxmemory-policy" was not provided ' \
+                                                            'in "{}". Please refer to README.md.'.format(config_path)
+        assert r['settings']['maxmemory-policy'].get('values', []), 'Setting "settings.maxmemory.values" was ' \
+                                                                    'not provided in "{}". ' \
+                                                                    'Please refer to README.md.'.format(config_path)
+
+    @staticmethod
+    def load_config():
         try:
-            self.config = c = yaml.load(open(config_path))
-            self.config.update(yaml.load(open(secret_path)) if os.path.isfile(secret_path) else {})
+            config = yaml.load(open(config_path))
+            dict_merge(config, yaml.load(open(secret_path)) if os.path.isfile(secret_path) else {})
+            return config
         except yaml.YAMLError:
             raise Exception('Could not parse either config or secret file. Please check their contents.')
-        assert c and c.get('redis', None), 'Configuration was not provided in "{}". Please refer to README.md'.format(config_path)
-        c = c.get('redis')
-        assert c.get('settings', None), 'Section "settings" was not provided in "{}". Please refer to README.md.'.format(config_path)
-        assert c['settings'].get('maxmemory', None), 'Section "settings.maxmemory" was not provided in "{}". Please refer to README.md.'.format(config_path)
-        assert c['settings']['maxmemory'].get('min', None), 'Setting "settings.maxmemory.min" was not provided in "{}". Please refer to README.md.'.format(config_path)
-        assert c['settings']['maxmemory'].get('max', None), 'Setting "settings.maxmemory.max" was not provided in "{}". Please refer to README.md.'.format(config_path)
-        assert c['settings']['maxmemory'].get('step', None), 'Setting "settings.maxmemory.step" was not provided in "{}". Please refer to README.md.'.format(config_path)
-        assert c['settings'].get('maxmemory-policy', None), 'Section "settings.maxmemory-policy" was not provided in "{}". Please refer to README.md.'.format(config_path)
-        assert c['settings']['maxmemory-policy'].get('values', []), 'Setting "settings.maxmemory.values" was not provided in "{}". Please refer to README.md.'.format(config_path)
-        self.client = RedisClient(
-            host=self.config.get('host', '127.0.0.1'),
-            port=self.config.get('port', 6379),
-            db=self.config.get('db', 0),
-            password=self.config.get('password', ''),
-        )
 
     def adjust(self, data=None):
         assert data, 'Received no settings to adjust.'
