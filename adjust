@@ -39,8 +39,6 @@ class RedisDriver(Adjust):
         assert c and c.get('redis', None), 'Configuration was not provided in "{}". ' \
                                            'Please refer to README.md'.format(config_path)
         r = c.get('redis')
-        import json
-        raise Exception(json.dumps(c, indent=2))
         assert r.get('settings', None), 'Section "settings" was not provided in "{}". ' \
                                         'Please refer to README.md.'.format(config_path)
         assert r['settings'].get('maxmemory', None), 'Section "settings.maxmemory" was not provided ' \
