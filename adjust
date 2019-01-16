@@ -7,7 +7,7 @@ from redis import Redis as RedisClient
 from adjust import Adjust
 
 DESC = "Redis adjust driver for Opsani Optune"
-VERSION = "0.0.3"
+VERSION = "0.0.4"
 HAS_CANCEL = False
 
 config_path = os.environ.get('OPTUNE_CONFIG', './config.yaml')
@@ -26,22 +26,37 @@ class RedisDriver(Adjust):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.config = self.load_config()
-        self.check_config()
+        self.check_config(self.config)
         self.client = RedisClient(
-            host=self.config.get('redis').get('host', '127.0.0.1'),
-            port=self.config.get('redis').get('port', 6379),
-            db=self.config.get('redis').get('db', 0),
-            password=self.config.get('redis').get('password', ''),
+            host=self.config['redis'].get('host', '127.0.0.1'),
+            port=self.config['redis'].get('port', 6379),
+            db=self.config['redis'].get('db', 0),
+            password=self.config['redis'].get('password', ''),
         )
 
-    def check_config(self):
-        c = self.config
+    @staticmethod
+    def load_config():
+        try:
+            config = yaml.load(open(config_path))
+        except yaml.YAMLError as e:
+            raise Exception('Could not parse config file located at "{}". '
+                            'Please check its contents. Error: {}'.format(config_path, str(e)))
+        try:
+            dict_merge(config, yaml.load(open(secret_path)) if os.path.isfile(secret_path) else {})
+        except yaml.YAMLError as e:
+            raise Exception('Could not parse secret file located at "{}". '
+                            'Please check its contents. Error: {}'.format(config_path, str(e)))
+        return config
+
+    @staticmethod
+    def check_config(config):
+        c = config
         assert c and c.get('redis', None), 'Configuration was not provided in "{}". ' \
                                            'Please refer to README.md'.format(config_path)
         r = c.get('redis')
         assert r.get('settings', None), 'Section "settings" was not provided in "{}". ' \
                                         'Please refer to README.md.'.format(config_path)
-        assert r['settings'].get('maxmemory', None), 'Section "settings.maxmemory" was not provided ' \
+        assert r['settings'].get('maxmemory', None), 'Setting section "settings.maxmemory" was not provided ' \
                                                      'in "{}". Please refer to README.md.'.format(config_path)
         assert r['settings']['maxmemory'].get('min', None), 'Setting "settings.maxmemory.min" was not provided ' \
                                                             'in "{}". Please refer to README.md.'.format(config_path)
@@ -49,20 +64,12 @@ class RedisDriver(Adjust):
                                                             'in "{}". Please refer to README.md.'.format(config_path)
         assert r['settings']['maxmemory'].get('step', None), 'Setting "settings.maxmemory.step" was not provided ' \
                                                              'in "{}". Please refer to README.md.'.format(config_path)
-        assert r['settings'].get('maxmemory-policy', None), 'Section "settings.maxmemory-policy" was not provided ' \
-                                                            'in "{}". Please refer to README.md.'.format(config_path)
+        assert r['settings'].get('maxmemory-policy', None), 'Setting section "settings.maxmemory-policy" was ' \
+                                                            'not provided in "{}". ' \
+                                                            'Please refer to README.md.'.format(config_path)
         assert r['settings']['maxmemory-policy'].get('values', []), 'Setting "settings.maxmemory.values" was ' \
                                                                     'not provided in "{}". ' \
                                                                     'Please refer to README.md.'.format(config_path)
-
-    @staticmethod
-    def load_config():
-        try:
-            config = yaml.load(open(config_path))
-            dict_merge(config, yaml.load(open(secret_path)) if os.path.isfile(secret_path) else {})
-            return config
-        except yaml.YAMLError:
-            raise Exception('Could not parse either config or secret file. Please check their contents.')
 
     def adjust(self, data=None):
         assert data, 'Received no settings to adjust.'
