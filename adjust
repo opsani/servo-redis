@@ -9,58 +9,38 @@ DESC = "Redis adjust driver for Opsani Optune"
 VERSION = "0.0.1"
 HAS_CANCEL = False
 
-config_path = os.environ.get('OPTUNE_CONFIG_PATH', '/servo/config.yaml')
-assert config_path, 'Please, provide `config.yaml` file path using environment variable OPTUNE_CONFIG_PATH.\n' \
-                    'Its current value is "{}". You can refer to an example file config.yaml.example. ' \
-                    'It can be found in the repo of this driver.'.format(config_path)
-
-with open(config_path, 'r') as c:
-    try:
-        config = yaml.load(c)
-    except FileNotFoundError as e:
-        print('Could not find config.yaml at "{}"'.format(config_path))
-        exit(1)
-    except yaml.YAMLError as e:
-        print('Could not parse config.yaml file located at "{}"'.format(config_path))
-        raise
-
-    assert config, 'No configuration was provided in the `config.yaml` file. ' \
-                   'Please, make sure "{}" has all the required keys ' \
-                   'as per specification; you can find in `README.md`.'.format(config_path)
-
-try:
-    redis_config = config.get('redis')
-    redis_config_settings = redis_config.get('settings')
-    redis_config_connection = redis_config.setdefault('connection', {})
-except KeyError as e:
-    raise Exception('Please, refer to config.yaml.example to define all the required configuration.\n'
-                    'Original error: {}'.format(str(e)))
+config_path = os.environ.get('OPTUNE_CONFIG_PATH', './config.yaml')
+secret_path = os.environ.get('OPTUNE_SECRET_CONFIG', './secret.yaml')
 
 
 class RedisDriver(Adjust):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        rkwargs = {
-            'host': str(
-                os.environ.get('OPTUNE_REDIS_HOST', redis_config_connection.get('host', 'localhost'))
-            ),
-            'port': int(
-                os.environ.get('OPTUNE_REDIS_PORT', redis_config_connection.get('port', 6379))
-            ),
-            'db': int(
-                os.environ.get('OPTUNE_REDIS_DB', redis_config_connection.get('db', 0))
-            ),
-            'password': str(
-                os.environ.get('OPTUNE_REDIS_PASSWORD', redis_config_connection.get('password', ''))
-            ),
-        }
-        self.client = RedisClient(**rkwargs)
+        self.config = c = yaml.load(open(config_path))
+        self.config.update(yaml.load(open(secret_path)) if os.path.isfile(secret_path) else {})
+        assert c and c.get('redis', None), 'No configuration was provided in "{}". Please refer to README.md'.format(config_path)
+        c = c.get('redis')
+        assert c.get('settings', None), 'Section "settings" was not provided in "{}". Please refer to README.md.'.format(config_path)
+        assert c['settings'].get('maxmemory', None), 'Section "settings.maxmemory" was not provided in "{}". Please refer to README.md.'.format(config_path)
+        assert c['settings']['maxmemory'].get('min', None), 'Setting "settings.maxmemory.min" was not provided in "{}". Please refer to README.md.'.format(config_path)
+        assert c['settings']['maxmemory'].get('max', None), 'Setting "settings.maxmemory.max" was not provided in "{}". Please refer to README.md.'.format(config_path)
+        assert c['settings']['maxmemory'].get('step', None), 'Setting "settings.maxmemory.step" was not provided in "{}". Please refer to README.md.'.format(config_path)
+        assert c['settings'].get('maxmemory-policy', None), 'Section "settings.maxmemory-policy" was not provided in "{}". Please refer to README.md.'.format(config_path)
+        assert c['settings']['maxmemory-policy'].get('values', []), 'Setting "settings.maxmemory.values" was not provided in "{}". Please refer to README.md.'.format(config_path)
+        self.client = RedisClient(
+            host=self.config.get('host', '127.0.0.1'),
+            port=self.config.get('port', 6379),
+            db=self.config.get('db', 0),
+            password=self.config.get('password', ''),
+        )
 
     def adjust(self, data=None):
+        assert data, 'Received no settings to adjust. Panic.'
         settings = data['application']['components']['redis']['settings']
+        size = len(settings)
 
         self.progress = 0
-        self.progress_message = "adjusting {} setting/s".format(len(settings))
+        self.progress_message = "adjusting {} settings".format(size)
         self.print_progress()
 
         for name, setting in settings.items():
@@ -69,12 +49,10 @@ class RedisDriver(Adjust):
             if name == 'maxmemory':
                 value = '{}mb'.format(int(value))
 
-            # If setting is not supported, `redis.exceptions.ResponseError: Unsupported CONFIG parameter:`
-            # will be raised.
-            self.client.config_set(name, str(value))
+            self.client.config_set(name, value)
 
         self.progress = 100
-        self.progress_message = "adjusted {} setting/s".format(len(settings))
+        self.progress_message = "adjusted {} settings".format(size)
         self.print_progress()
 
     def query(self):
@@ -84,15 +62,15 @@ class RedisDriver(Adjust):
                     'settings': {
                         'maxmemory': {
                             'type': 'range',
-                            'value': int(int(self.client.config_get('maxmemory')['maxmemory']) / 1024 / 1024),
-                            'min': redis_config_settings.get('maxmemory').get('min'),
-                            'max': redis_config_settings.get('maxmemory').get('max'),
-                            'step': redis_config_settings.get('maxmemory').get('step'),
+                            'value': int(self.client.config_get('maxmemory')['maxmemory']) // 2**20,
+                            'min': self.config.get('settings').get('maxmemory').get('min'),
+                            'max': self.config.get('settings').get('maxmemory').get('max'),
+                            'step': self.config.get('settings').get('maxmemory').get('step'),
                             'unit': 'megabytes',
                         },
                         'maxmemory-policy': {
                             'type': 'enum',
-                            'values': redis_config_settings.get('maxmemory-policy').get('values'),
+                            'values': self.config.get('settings').get('maxmemory-policy').get('values'),
                             'value': self.client.config_get('maxmemory-policy')['maxmemory-policy'],
                         },
                     },
