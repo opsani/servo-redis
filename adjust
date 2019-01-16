@@ -18,7 +18,7 @@ class RedisDriver(Adjust):
         super().__init__(*args, **kwargs)
         self.config = c = yaml.load(open(config_path))
         self.config.update(yaml.load(open(secret_path)) if os.path.isfile(secret_path) else {})
-        assert c and c.get('redis', None), 'No configuration was provided in "{}". Please refer to README.md'.format(config_path)
+        assert c and c.get('redis', None), 'Configuration was not provided in "{}". Please refer to README.md'.format(config_path)
         c = c.get('redis')
         assert c.get('settings', None), 'Section "settings" was not provided in "{}". Please refer to README.md.'.format(config_path)
         assert c['settings'].get('maxmemory', None), 'Section "settings.maxmemory" was not provided in "{}". Please refer to README.md.'.format(config_path)
