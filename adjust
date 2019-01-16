@@ -93,14 +93,14 @@ class RedisDriver(Adjust):
                         'maxmemory': {
                             'type': 'range',
                             'value': int(self.client.config_get('maxmemory')['maxmemory']) // 2**20,
-                            'min': self.config.get('settings').get('maxmemory').get('min'),
-                            'max': self.config.get('settings').get('maxmemory').get('max'),
-                            'step': self.config.get('settings').get('maxmemory').get('step'),
+                            'min': self.config['redis']['settings']['maxmemory']['min'],
+                            'max': self.config['redis']['settings']['maxmemory']['max'],
+                            'step': self.config['redis']['settings']['maxmemory']['step'],
                             'unit': 'megabytes',
                         },
                         'maxmemory-policy': {
                             'type': 'enum',
-                            'values': self.config.get('settings').get('maxmemory-policy').get('values'),
+                            'values': self.config['redis']['settings']['maxmemory-policy']['values'],
                             'value': self.client.config_get('maxmemory-policy')['maxmemory-policy'],
                         },
                     },
