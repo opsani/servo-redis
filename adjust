@@ -6,7 +6,7 @@ from redis import Redis as RedisClient
 from adjust import Adjust
 
 DESC = "Redis adjust driver for Opsani Optune"
-VERSION = "0.0.1"
+VERSION = "0.0.2"
 HAS_CANCEL = False
 
 config_path = os.environ.get('OPTUNE_CONFIG_PATH', './config.yaml')
