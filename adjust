@@ -16,8 +16,11 @@ secret_path = os.environ.get('OPTUNE_SECRET_CONFIG', './secret.yaml')
 class RedisDriver(Adjust):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.config = c = yaml.load(open(config_path))
-        self.config.update(yaml.load(open(secret_path)) if os.path.isfile(secret_path) else {})
+        try:
+            self.config = c = yaml.load(open(config_path))
+            self.config.update(yaml.load(open(secret_path)) if os.path.isfile(secret_path) else {})
+        except yaml.YAMLError:
+            raise Exception('Could not parse either config or secret file. Please check their contents.')
         assert c and c.get('redis', None), 'Configuration was not provided in "{}". Please refer to README.md'.format(config_path)
         c = c.get('redis')
         assert c.get('settings', None), 'Section "settings" was not provided in "{}". Please refer to README.md.'.format(config_path)
