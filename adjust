@@ -38,7 +38,7 @@ class RedisDriver(Adjust):
         )
 
     def adjust(self, data=None):
-        assert data, 'Received no settings to adjust. Panic.'
+        assert data, 'Received no settings to adjust.'
         settings = data['application']['components']['redis']['settings']
         size = len(settings)
 
