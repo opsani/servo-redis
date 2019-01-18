@@ -1,23 +1,15 @@
 # servo-redis
-Optune adjust driver for Redis
+_Optune adjust driver for Redis_
 
-Note: this driver requires `measure.py` base class from the Optune servo core. It can be copied or symlinked here as part of packaging.
+This driver updates Redis server settings in real-time (without server restart) using built-in command `CONFIG SET`. It only serves one Redis node. It does not flush the changes to the configuration file `redis.conf`.
 
+__Note__ this driver requires `measure.py` base class from the Optune servo core. It can be copied or symlinked here as part of packaging.
+
+<!--
 ## Installation
-1. Pull
-2. Create config.yaml referring to config.yaml.example
-    * **maxmemory** section: `min`, `max` and `step` settings are required. You can read more about them in the section `redis.maxmemory` below.
-3. Make sure you set initial values for `maxmemory` and `maxmemory-policy` using command `CONFIG SET`. Ex. `redis-cli CONFIG SET maxmemory 1g` and `redis-cli CONFIG SET maxmemory-policy allkeys-random`. It'd be good to determine your current memory usage and use that as a starting point for `maxmemory` setting. If you're not aware of your usecase's access pattern - we'd recommend to start with `allkeys-random`.
-4. Run the driver
-5. 🍾🥂
-
-## config.yaml options
-### redis.connection
-In this section you can define credentials to be used to connect to your redis node. You can refer to config.yaml.example for more information.
-
-### redis.maxmemory
-To understand the limits of your redis node please define the following keys - min, max and step.
-* **min** - minimum amount of memory available for cluster's dataset in megabytes, ex. 128
-* **max** - maximum amount of memory available for cluster's dataset in megabytes, ex. 6144 (so we know the boundaries).
-Typically you may want to specify 90% of available instance memory.
-* **step** - how big is a step of memory increase in megabytes, ex. 128
+1. Referring to `config.yaml.example` create file `config.yaml` in driver's folder. It will contain settings you'd want to make adjustable on your Redis instance.
+1. Referring to `secret.yaml.example` create file `secret.yaml` in driver's folder. It will contain connection credentials to your Redis server.
+1. Run bash command `docker build -t servo-redis .` to build driver's image.
+1. Request access token file from us. Map it to `/run/secrets/optune_auth_token` with argument `-v /path/to/optune.token:/run/secrets/optune_auth_token` when running the driver. Ex. `docker run -d -v /path/to/optune.token:/run/secrets/optune_auth_token servo-redis`.
+1. Run the driver using command `docker run -v /path/to/optune.token:/run/secrets/optune_auth_token -d servo-redis`.
+-->
