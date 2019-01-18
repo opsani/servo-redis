@@ -1,15 +1,15 @@
 redis:
   settings:
     maxmemory:
-      # Minimum available memory; in megabytes
+      # Lower bound for this setting
       min: 128
-      # Maximum available memory; in megabytes
+      # Upper bound for this setting
       max: 6144
-      # Size of memory ramp up per one change; in megabytes
-      step: 128
+      # Size of step of memory increase. Please make sure it can divide min and max values without remainder.
+      step: 64
     maxmemory-policy:
-      # List of settings to consider.
-      # You may want to change to/include `volatile-*` keys in case you want to consider removing only keys with expiration set.
+      # List of policies to consider. Please refer to https://redis.io/topics/lru-cache for more details.
+      # You may want to change to/include `volatile-*` keys in case you want to consider removing only keys with expiration time defined.
       values:
         - allkeys-lru
         - allkeys-lfu
