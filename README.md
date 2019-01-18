@@ -3,7 +3,7 @@ _Optune adjust driver for Redis_
 
 This driver updates Redis server settings in real-time (without server restart) using built-in command `CONFIG SET`. It only serves one Redis node. It does not flush the changes to the configuration file `redis.conf`.
 
-__Note__ this driver requires `measure.py` base class from the Optune servo core. It can be copied or symlinked here as part of packaging.
+__Note__ this driver requires `adjust.py` base class from the Optune servo core. It can be copied or symlinked here as part of packaging.
 
 <!--
 ## Installation
