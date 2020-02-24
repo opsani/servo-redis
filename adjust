@@ -37,12 +37,12 @@ class RedisDriver(Adjust):
     @staticmethod
     def load_config():
         try:
-            config = yaml.load(open(config_path))
+            config = yaml.safe_load(open(config_path))
         except yaml.YAMLError as e:
             raise Exception('Could not parse config file located at "{}". '
                             'Please check its contents. Error: {}'.format(config_path, str(e)))
         try:
-            dict_merge(config, yaml.load(open(secret_path)) if os.path.isfile(secret_path) else {})
+            dict_merge(config, yaml.safe_load(open(secret_path)) if os.path.isfile(secret_path) else {})
         except yaml.YAMLError as e:
             raise Exception('Could not parse secret file located at "{}". '
                             'Please check its contents. Error: {}'.format(config_path, str(e)))
